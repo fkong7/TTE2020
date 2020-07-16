@@ -49,12 +49,13 @@ def load_data_science_lv_bowl(dir_n, num, out_dir):
     for i, ax in enumerate(axes):
         try:
             im_list = list()
-            sax = natural_sort(glob.glob(os.path.join(fns[i], 'study', 'sax*')))
+            sax = natural_sort(glob.glob(os.path.join(fns[i], 'study', 'sax*'))) # find the names of the folders starting with sax_?
             # get only the first time frame
             ref = None
-            for s in sax:
-                im_fn = glob.glob(os.path.join(s, '*.dcm'))[0]
-                im = sitk.ReadImage(im_fn)
+            for s in sax: # for each folder name
+                im_fn = natural_sort(glob.glob(os.path.join(s, '*.dcm'))) # find the names of the files with .dcm
+                im_fn  = im_fn[0]
+                im = sitk.ReadImage(im_fn) # read image with name im_fn 
                 if ref is None:
                     ref = im
                 im = centering(im, ref)
@@ -65,7 +66,7 @@ def load_data_science_lv_bowl(dir_n, num, out_dir):
             try:
                 os.makedirs(out_dir_n)
             except Exception as e: print(e)
-            volume_t = sitk.JoinSeries([volume, volume])
+            volume_t = sitk.JoinSeries([volume, volume]) # TO-DO: need to call JoinSeries on 3D volumes from all time frames
             sitk.WriteImage(volume_t, os.path.join(out_dir_n, os.path.basename(fns[i])+'_sa.nii.gz'))
             # resample to same in-plane resolution
             volume = resample_spacing(volume)[0]
