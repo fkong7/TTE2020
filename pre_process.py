@@ -171,3 +171,109 @@ def swap_low_freq(im1, im2, beta):
     im2_new = np.abs(np.real(np.fft.ifft2(im2_fft)))
     return im1, im2, im2_new
 
+class SpatialTransform(object):
+    '''
+    Base class to image transform
+    '''
+    def __init__(self, image):
+        self.image = image
+        self.dim = image.GetDimension()
+    def apply_transform(self):
+        output = []
+        out_im = transform_func(self.image, self.image, self.transform, order=1)
+        output.append(out_im)
+        return output
+    def add_transform(self, transform):
+        total = sitk.Transform(self.transform)
+        total.AddTransform(transform)
+        self.transform = total
+
+
+class AffineTransform(SpatialTransform):
+    '''
+    Apply random affine transform to input 3D image volume
+    '''
+    def __init__(self, image, shear_range, scale_range, rot_range, trans_range, flip_prob):
+        super(AffineTransform, self).__init__(image)
+        self.shear_range = shear_range
+        self.scale_range = scale_range
+        self.rot_range = rot_range
+        self.flip_prob = flip_prob
+        self.trans_range = trans_range
+        self.transform = sitk.AffineTransform(self.dim)
+
+    def scale(self):
+        self.transform = sitk.AffineTransform(self.transform)
+        scale = np.eye(self.dim)
+        scale = np.diag( 1./np.random.uniform(self.scale_range[0], self.scale_range[1], self.dim))
+        matrix = np.array(self.transform.GetMatrix()).reshape((self.dim,self.dim))
+        matrix = np.matmul(matrix, scale)
+        self.transform.SetMatrix(matrix.ravel())
+        self.transform.SetCenter(self.image.TransformContinuousIndexToPhysicalPoint(np.array(self.image.GetSize())/2.0))
+
+    def rotate(self):
+        angles = np.random.uniform(self.rot_range[0], self.rot_range[1], self.dim)
+        rads = np.array(angles)/180.*np.pi
+        x_rot = np.eye(self.dim)
+        x_rot = [[1., 0., 0.], [0., np.cos(rads[0]), -np.sin(rads[0])], [0., np.sin(rads[0]), np.cos(rads[0])]]
+        y_rot = [[np.cos(rads[1]), 0., np.sin(rads[1])], [0.,1.,0.], [-np.sin(rads[1]), 0., np.cos(rads[1])]]
+        z_rot = [[np.cos(rads[2]), -np.sin(rads[2]), 0.], [np.sin(rads[2]), np.cos(rads[2]), 0.], [0., 0., 1.]]
+        rot_matrix = np.matmul(np.matmul(np.array(x_rot), np.array(y_rot)), np.array(z_rot))
+        matrix = np.array(self.transform.GetMatrix()).reshape((self.dim, self.dim))
+        matrix = np.matmul(matrix, rot_matrix)
+        self.transform = sitk.AffineTransform(self.transform)
+        self.transform.SetMatrix(matrix.ravel())
+        self.transform.SetCenter(self.image.TransformContinuousIndexToPhysicalPoint(np.array(self.image.GetSize())/2.0))
+    
+    def translate(self):
+        self.transform = sitk.AffineTransform(self.transform)
+        params = np.random.uniform(self.trans_range[0],self.trans_range[1], self.dim)
+        print("Translation: " , params)
+        self.transform.SetTranslation(params)
+        #self.transform.SetCenter(self.image.TransformContinuousIndexToPhysicalPoint(np.array(self.image.GetSize())/2.0))
+    def shear(self):
+        self.transform = sitk.AffineTransform(self.transform)  
+        axis = np.argsort(np.random.rand(self.dim))
+        self.transform.Shear(int(axis[0]), int(axis[1]), np.random.uniform(self.shear_range[0], 
+            self.shear_range[1]))
+        self.transform.SetCenter(self.image.TransformContinuousIndexToPhysicalPoint(np.array(self.image.GetSize())/2.0))
+
+    
+    def flip(self):
+        flip = np.random.rand(self.dim)>self.flip_prob
+        flip_matrix = np.eye(self.dim)
+        flip_matrix[np.diag(flip)] = -1. 
+        self.transform = sitk.AffineTransform(self.transform)
+        matrix = np.array(self.transform.GetMatrix()).reshape((self.dim,self.dim))
+        matrix = np.matmul(matrix, flip_matrix)
+        self.transform.SetMatrix(matrix.ravel())
+        self.transform.SetCenter(self.image.TransformContinuousIndexToPhysicalPoint(np.array(self.image.GetSize())/2.0))
+
+    def affine(self):
+        # commented out others since we only need translation for now
+        #self.shear()
+        #self.rotate()
+        self.translate()
+        #self.flip()
+        #self.scale()
+    def apply_transform(self):
+        output = []
+        out_im = transform_func(self.image, self.image, self.transform, order=1)
+        output.append(out_im)
+        return output
+
+def affine_usage(sitk_image):
+    ''' 
+    example function to apply affine transform to images
+    '''
+    params_affine = {
+        'scale_range': [0.8, 1.2],
+        'rot_range': [-20., 20.],
+        'trans_range': [-5., 5.], # range of translation
+        'shear_range': [-0.13, 0.13],
+        'flip_prob': 0.3
+        }
+    affine = AffineTransform(sitk_image, **params_affine)
+    affine.affine()
+    output = affine.apply_transform()
+    return output
